@@ -1,4 +1,5 @@
 #include <LedControl.h>
+
 #include <IRremote.h>
 
 /* PINS */
@@ -6,6 +7,8 @@
 #define MATRIX_CLK 11
 #define MATRIX_CS 9
 #define IR_RECEIVE 6
+#define POTENTIOMETER A2
+#define BUZZER 13
 
 #define MATRIX_COUNT 4
 #define MAZE_HEIGHT 8
@@ -31,6 +34,8 @@ decode_results currentIrResult;
 
 // https://github.com/wayoda/LedControl
 LedControl controller = LedControl(MATRIX_DATA, MATRIX_CLK, MATRIX_CS, MATRIX_COUNT);
+
+int16_t potentiometerValue = 0;
 
 Point player = Point(0, 0);
 bool maze[MAZE_WIDTH][MAZE_HEIGHT];
@@ -123,16 +128,18 @@ void generateMaze()
 
 void setup()
 {
+    pinMode(POTENTIOMETER, INPUT);
+    pinMode(BUZZER, OUTPUT);
+    randomSeed(analogRead(A0) + micros()); // initialize the random state machine
+
     Serial.begin(9600);
 
-    randomSeed(analogRead(A0) + micros()); // initialize the random state machine
+    clearDisplay();
+    receiver.enableIRIn();
 
     generateMaze();
     printMaze();
-    clearDisplay();
     updateDisplay();
-
-    receiver.enableIRIn();
 }
 
 void clearDisplay()
@@ -190,5 +197,12 @@ void loop()
         Serial.println(currentIrResult.value);
 
         receiver.resume();
+    }
+
+    int16_t pot = analogRead(POTENTIOMETER);
+    if (abs(potentiometerValue - pot) > 100)
+    {
+        potentiometerValue = pot;
+        tone(BUZZER, potentiometerValue * 2 + 400, 100);
     }
 }
