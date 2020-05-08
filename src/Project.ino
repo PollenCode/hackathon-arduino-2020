@@ -1,7 +1,17 @@
+#include <LedControl.h>
+
+#define MATRIX_DATA 10
+#define MATRIX_CLK 11
+#define MATRIX_CS 9
+#define MATRIX_COUNT 4
+
 #define MAZE_HEIGHT 8
-#define MAZE_WIDTH 8
+#define MAZE_WIDTH 32
 
 bool maze[MAZE_WIDTH][MAZE_HEIGHT];
+
+// https://github.com/wayoda/LedControl
+LedControl controller = LedControl(MATRIX_DATA, MATRIX_CLK, MATRIX_CS, MATRIX_COUNT);
 
 struct Point
 {
@@ -111,6 +121,45 @@ void setup()
 
     generateMaze();
     printMaze();
+    clearDisplay();
+    updateDisplay();
+}
+
+void clearDisplay()
+{
+    for (uint16_t i = 0; i < MATRIX_COUNT; i++)
+    {
+        controller.shutdown(i, false);
+        controller.setIntensity(i, 8);
+        controller.clearDisplay(i);
+    }
+}
+
+void updateDisplay()
+{
+    for (int x = 0; x < MATRIX_COUNT * 8; x++)
+    {
+        int device = MATRIX_COUNT - 1 - x / 8;
+        int column = x % 8;
+
+        if (x >= MAZE_WIDTH)
+        {
+            Serial.println("Warning: updateDisplay() overflowed.");
+            break;
+        }
+
+        uint8_t value = 0x0;
+        for (int y = 0; y < 8; y++)
+            value |= maze[x][y] << y;
+
+        Serial.print(value, BIN);
+        Serial.print(" at device ");
+        Serial.print(device);
+        Serial.print(", column ");
+        Serial.println(column);
+
+        controller.setColumn(device, column, value);
+    }
 }
 
 void printMaze()
