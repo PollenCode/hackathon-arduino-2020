@@ -1,9 +1,7 @@
-#define MAZE_HEIGHT 9
-#define MAZE_WIDTH 9
+#define MAZE_HEIGHT 8
+#define MAZE_WIDTH 8
 
 bool maze[MAZE_WIDTH][MAZE_HEIGHT];
-
-// []
 
 struct Point
 {
@@ -28,7 +26,7 @@ bool isWall(uint16_t x, uint16_t y)
 
 void generateMaze()
 {
-    Point current = Point(1, 1);
+    Point current = Point(MAZE_WIDTH / 2, MAZE_HEIGHT / 2); // start in the middle
 
     uint16_t returningPointsSize = 0;
     Point returning[((MAZE_WIDTH - 1) / 2) * ((MAZE_HEIGHT - 1) / 2)];
@@ -61,8 +59,8 @@ void generateMaze()
         {
             if (ableDirections > 1)
             {
-                returning[returningPointsSize++] = current;
                 // save point
+                returning[returningPointsSize++] = current;
             }
 
             uint8_t directionIndex = random(ableDirections);
@@ -103,18 +101,28 @@ void generateMaze()
             }
         }
     }
-
-    return maze;
 }
 
 void setup()
 {
-    generateMaze();
-
     Serial.begin(9600);
+
+    randomSeed(analogRead(A0) + micros()); // initialize the random state machine
+
+    generateMaze();
+    printMaze();
+}
+
+void printMaze()
+{
+    for (int y = 0; y < MAZE_HEIGHT; y++)
+    {
+        for (int x = 0; x < MAZE_WIDTH; x++)
+            Serial.print(maze[x][y] ? '%' : ' ');
+        Serial.println();
+    }
 }
 
 void loop()
 {
-    Serial.println('skeer skeer skeer');
 }
