@@ -1,17 +1,15 @@
 #include <LedControl.h>
+#include <IRremote.h>
 
+/* PINS */
 #define MATRIX_DATA 10
 #define MATRIX_CLK 11
 #define MATRIX_CS 9
-#define MATRIX_COUNT 4
+#define IR_RECEIVE 6
 
+#define MATRIX_COUNT 4
 #define MAZE_HEIGHT 8
 #define MAZE_WIDTH 32
-
-bool maze[MAZE_WIDTH][MAZE_HEIGHT];
-
-// https://github.com/wayoda/LedControl
-LedControl controller = LedControl(MATRIX_DATA, MATRIX_CLK, MATRIX_CS, MATRIX_COUNT);
 
 struct Point
 {
@@ -26,6 +24,16 @@ struct Point
     {
     }
 };
+
+// https://github.com/z3t0/Arduino-IRremote/releases/tag/2.1.0
+IRrecv receiver = IRrecv(IR_RECEIVE);
+decode_results currentIrResult;
+
+// https://github.com/wayoda/LedControl
+LedControl controller = LedControl(MATRIX_DATA, MATRIX_CLK, MATRIX_CS, MATRIX_COUNT);
+
+Point player = Point(0, 0);
+bool maze[MAZE_WIDTH][MAZE_HEIGHT];
 
 bool isWall(uint16_t x, uint16_t y)
 {
@@ -123,6 +131,8 @@ void setup()
     printMaze();
     clearDisplay();
     updateDisplay();
+
+    receiver.enableIRIn();
 }
 
 void clearDisplay()
@@ -174,4 +184,11 @@ void printMaze()
 
 void loop()
 {
+    if (receiver.decode(&currentIrResult))
+    {
+        Serial.print("Received ir signal: ");
+        Serial.println(currentIrResult.value);
+
+        receiver.resume();
+    }
 }
