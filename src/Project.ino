@@ -12,7 +12,7 @@
 
 #define MATRIX_COUNT 4
 #define MAZE_HEIGHT 8
-#define MAZE_WIDTH 8
+#define MAZE_WIDTH 32
 
 #define UP 0
 #define RIGHT 1
@@ -43,7 +43,7 @@ LedControl controller = LedControl(MATRIX_DATA, MATRIX_CLK, MATRIX_CS, MATRIX_CO
 int16_t potentiometerValue = 0;
 
 Point player = Point(0, 0);
-Point goal = Point(6, 6);
+Point goal = Point(MAZE_WIDTH - 2, 6);
 bool maze[MAZE_WIDTH][MAZE_HEIGHT];
 
 uint16_t tick;
@@ -197,7 +197,6 @@ void movePlayer(uint8_t dir)
     if (goal.x == player.x && goal.y == player.y)
     {
 
-        
         generateMaze();
         updateDisplay();
         player.x = 0;
@@ -235,7 +234,7 @@ void updateDisplay()
 {
     for (int x = 0; x < MATRIX_COUNT * 8; x++)
     {
-        int device = MATRIX_COUNT - 1 - x / 8;
+        int device = x / 8;
         int column = x % 8;
 
         if (x >= MAZE_WIDTH)
@@ -271,7 +270,7 @@ void printMaze()
 
 void setLed(Point &point, bool on)
 {
-    controller.setLed(MATRIX_COUNT - 1, 7 - point.y, 7 - point.x, on);
+    controller.setLed(point.x / 8, 7 - point.y, 7 - point.x % 8, on);
 }
 
 void loop()
@@ -305,7 +304,7 @@ void loop()
     }
 
     setLed(player, tick % 150 < 75);
-    setLed(goal, tick % 40 == 0);
+    setLed(goal, tick % 150 < 5);
 
     tick++;
 }
