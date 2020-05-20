@@ -12,7 +12,12 @@
 
 #define MATRIX_COUNT 4
 #define MAZE_HEIGHT 8
-#define MAZE_WIDTH 32
+#define MAZE_WIDTH 8
+
+#define UP 0
+#define RIGHT 1
+#define DOWN 2
+#define LEFT 3
 
 struct Point
 {
@@ -38,7 +43,17 @@ LedControl controller = LedControl(MATRIX_DATA, MATRIX_CLK, MATRIX_CS, MATRIX_CO
 int16_t potentiometerValue = 0;
 
 Point player = Point(0, 0);
+Point goal = Point(6, 6);
 bool maze[MAZE_WIDTH][MAZE_HEIGHT];
+
+uint16_t tick;
+
+bool isPath(uint16_t x, uint16_t y)
+{
+    if (x < 0 || y < 0 || x >= MAZE_WIDTH || y >= MAZE_HEIGHT)
+        return false;
+    return !maze[x][y];
+}
 
 bool isWall(uint16_t x, uint16_t y)
 {
@@ -126,6 +141,70 @@ void generateMaze()
     }
 }
 
+void movePlayer(uint8_t dir)
+{
+    Serial.print("Moving player in dir ");
+    Serial.println(dir);
+
+    switch (dir)
+    {
+    case UP:
+        if (isPath(player.x, player.y - 1))
+        {
+            do
+            {
+                setLed(player, false);
+                player.y -= 1;
+                setLed(player, true);
+            } while (isPath(player.x, player.y - 1) && !isPath(player.x - 1, player.y) && !isPath(player.x + 1, player.y));
+        }
+        break;
+    case RIGHT:
+        if (isPath(player.x + 1, player.y))
+        {
+            do
+            {
+                setLed(player, false);
+                player.x += 1;
+                setLed(player, true);
+            } while (isPath(player.x + 1, player.y) && !isPath(player.x, player.y - 1) && !isPath(player.x, player.y + 1));
+        }
+        break;
+    case DOWN:
+        if (isPath(player.x, player.y + 1))
+        {
+            do
+            {
+                setLed(player, false);
+                player.y += 1;
+                setLed(player, true);
+            } while (isPath(player.x, player.y + 1) && !isPath(player.x - 1, player.y) && !isPath(player.x + 1, player.y));
+        }
+        break;
+    case LEFT:
+        if (isPath(player.x - 1, player.y))
+        {
+            do
+            {
+                setLed(player, false);
+                player.x -= 1;
+                setLed(player, true);
+            } while (isPath(player.x - 1, player.y) && !isPath(player.x, player.y - 1) && !isPath(player.x, player.y + 1));
+        }
+        break;
+    }
+
+    if (goal.x == player.x && goal.y == player.y)
+    {
+
+        
+        generateMaze();
+        updateDisplay();
+        player.x = 0;
+        player.y = 0;
+    }
+}
+
 void setup()
 {
     pinMode(POTENTIOMETER, INPUT);
@@ -175,7 +254,8 @@ void updateDisplay()
         Serial.print(", column ");
         Serial.println(column);
 
-        controller.setColumn(device, column, value);
+        //controller.setRow(device, column, B10101010);
+        controller.setColumn(device, 7 - column, value);
     }
 }
 
@@ -189,6 +269,11 @@ void printMaze()
     }
 }
 
+void setLed(Point &point, bool on)
+{
+    controller.setLed(MATRIX_COUNT - 1, 7 - point.y, 7 - point.x, on);
+}
+
 void loop()
 {
     if (receiver.decode(&currentIrResult))
@@ -199,10 +284,28 @@ void loop()
         receiver.resume();
     }
 
+    if (Serial.available())
+    {
+        char c = Serial.read();
+        if (c == 'w')
+            movePlayer(UP);
+        else if (c == 'a')
+            movePlayer(LEFT);
+        else if (c == 's')
+            movePlayer(DOWN);
+        else if (c == 'd')
+            movePlayer(RIGHT);
+    }
+
     int16_t pot = analogRead(POTENTIOMETER);
     if (abs(potentiometerValue - pot) > 100)
     {
         potentiometerValue = pot;
         tone(BUZZER, potentiometerValue * 2 + 400, 100);
     }
+
+    setLed(player, tick % 150 < 75);
+    setLed(goal, tick % 40 == 0);
+
+    tick++;
 }
