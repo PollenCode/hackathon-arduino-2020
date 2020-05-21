@@ -9,6 +9,9 @@
 #define IR_RECEIVE 6
 #define POTENTIOMETER A2
 #define BUZZER 13
+#define FLAME A3
+#define TILT 7
+
 
 #define MATRIX_COUNT 4
 #define MAZE_HEIGHT 8
@@ -47,6 +50,8 @@ Point goal = Point(MAZE_WIDTH - 2, 6);
 bool maze[MAZE_WIDTH][MAZE_HEIGHT];
 
 uint16_t tick;
+
+long lastmillis = 0;
 
 bool isPath(uint16_t x, uint16_t y)
 {
@@ -205,10 +210,13 @@ void movePlayer(uint8_t dir)
 }
 
 void setup()
-{
+{ 
+    pinMode(FLAME, INPUT);
+    pinMode(TILT, INPUT);
     pinMode(POTENTIOMETER, INPUT);
     pinMode(BUZZER, OUTPUT);
     randomSeed(analogRead(A0) + micros()); // initialize the random state machine
+    
 
     Serial.begin(9600);
 
@@ -303,6 +311,24 @@ void loop()
         tone(BUZZER, potentiometerValue * 2 + 400, 100);
     }
 
+     int16_t fire = analogRead(FLAME);
+     if (fire < 300)
+    {
+        movePlayer(RIGHT);
+    }
+
+     bool state = digitalRead(TILT);
+     if (millis() - lastmillis < 100)
+     {
+      lastmillis = millis();
+      state = HIGH;
+     }
+     if (state == HIGH)
+    {
+        movePlayer(UP);
+        state = LOW;
+    }
+    
     setLed(player, tick % 150 < 75);
     setLed(goal, tick % 150 < 5);
 
