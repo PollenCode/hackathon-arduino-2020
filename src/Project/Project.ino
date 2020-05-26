@@ -44,6 +44,8 @@ decode_results currentIrResult;
 LedControl controller = LedControl(MATRIX_DATA, MATRIX_CLK, MATRIX_CS, MATRIX_COUNT);
 
 int16_t potentiometerValue = 0;
+bool left = false;
+bool right = false;
 
 Point player = Point(0, 0);
 Point goal = Point(MAZE_WIDTH - 2, 6);
@@ -287,7 +289,7 @@ void loop()
     {
         Serial.print("Received ir signal: ");
         Serial.println(currentIrResult.value);
-
+        movePlayer(LEFT);
         receiver.resume();
     }
 
@@ -301,15 +303,30 @@ void loop()
         else if (c == 's')
             movePlayer(DOWN);
         else if (c == 'd')
-            movePlayer(RIGHT);
+            movePlayer(RIGHT); 
     }
 
     int16_t pot = analogRead(POTENTIOMETER);
+    /*
     if (abs(potentiometerValue - pot) > 100)
     {
         potentiometerValue = pot;
         tone(BUZZER, potentiometerValue * 2 + 400, 100);
+    }*/
+  
+    
+    if (pot == 0 && right == false){
+      right = true;
+      left = false;
+      movePlayer(DOWN);
     }
+    else  if (pot > 450 && left == false){
+      right = false;
+      left = true;
+      movePlayer(DOWN);
+    }
+
+    
 
      int16_t fire = analogRead(FLAME);
      if (fire < 300)
