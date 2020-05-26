@@ -26,4 +26,5 @@ An additional push button is used to reset the puzzle and generate a new maze.
 
 ### Dylan Dedapper
 
--   ...
+-   Sensor Input
+

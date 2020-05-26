@@ -9,6 +9,8 @@
 #define IR_RECEIVE 6
 #define POTENTIOMETER A2
 #define BUZZER 13
+#define FLAME A3
+#define TILT 7
 
 #define MATRIX_COUNT 4
 #define MAZE_HEIGHT 8
@@ -41,12 +43,16 @@ decode_results currentIrResult;
 LedControl controller = LedControl(MATRIX_DATA, MATRIX_CLK, MATRIX_CS, MATRIX_COUNT);
 
 int16_t potentiometerValue = 0;
+bool left = false;
+bool right = false;
 
 Point player = Point(0, 0);
 Point goal = Point(MAZE_WIDTH - 2, 6);
 bool maze[MAZE_WIDTH][MAZE_HEIGHT];
 
 uint16_t tick;
+
+long lastmillis = 0;
 
 bool isPath(uint16_t x, uint16_t y)
 {
@@ -208,6 +214,8 @@ void movePlayer(uint8_t dir)
 
 void setup()
 {
+    pinMode(FLAME, INPUT);
+    pinMode(TILT, INPUT);
     pinMode(POTENTIOMETER, INPUT);
     pinMode(BUZZER, OUTPUT);
     randomSeed(analogRead(A0) + micros()); // initialize the random state machine
@@ -315,10 +323,42 @@ void loop()
     }
 
     int16_t pot = analogRead(POTENTIOMETER);
+    /*
     if (abs(potentiometerValue - pot) > 100)
     {
         potentiometerValue = pot;
         tone(BUZZER, potentiometerValue * 2 + 400, 100);
+    }*/
+
+    if (pot == 0 && right == false)
+    {
+        right = true;
+        left = false;
+        movePlayer(DOWN);
+    }
+    else if (pot > 450 && left == false)
+    {
+        right = false;
+        left = true;
+        movePlayer(DOWN);
+    }
+
+    int16_t fire = analogRead(FLAME);
+    if (fire < 300)
+    {
+        movePlayer(RIGHT);
+    }
+
+    bool state = digitalRead(TILT);
+    if (millis() - lastmillis < 100)
+    {
+        lastmillis = millis();
+        state = HIGH;
+    }
+    if (state == HIGH)
+    {
+        movePlayer(UP);
+        state = LOW;
     }
 
     setLed(player, tick % 150 < 75);
