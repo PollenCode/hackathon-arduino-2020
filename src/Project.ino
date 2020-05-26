@@ -146,6 +146,8 @@ void movePlayer(uint8_t dir)
     Serial.print("Moving player in dir ");
     Serial.println(dir);
 
+    tone(BUZZER, 400 + dir * 200, 50);
+
     switch (dir)
     {
     case UP:
@@ -268,7 +270,7 @@ void printMaze()
     }
 }
 
-void setLed(Point &point, bool on)
+void setLed(Point point, bool on)
 {
     controller.setLed(point.x / 8, 7 - point.y, 7 - point.x % 8, on);
 }
@@ -279,6 +281,22 @@ void loop()
     {
         Serial.print("Received ir signal: ");
         Serial.println(currentIrResult.value);
+
+        switch (currentIrResult.value)
+        {
+        case 16718055:
+            movePlayer(UP);
+            break;
+        case 16734885:
+            movePlayer(RIGHT);
+            break;
+        case 16730805:
+            movePlayer(DOWN);
+            break;
+        case 16716015:
+            movePlayer(LEFT);
+            break;
+        }
 
         receiver.resume();
     }
