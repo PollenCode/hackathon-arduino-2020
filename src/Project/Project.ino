@@ -1,5 +1,4 @@
 #include <LedControl.h>
-
 #include <IRremote.h>
 
 /* PINS */
@@ -13,26 +12,30 @@
 #define TILT 7
 
 #define MATRIX_COUNT 4
-#define MAZE_HEIGHT 8
-#define MAZE_WIDTH 32
+#define FIELD_WIDTH 32
+#define FIELD_HEIGHT 8
 
 #define UP 0
 #define RIGHT 1
 #define DOWN 2
 #define LEFT 3
 
+typedef uint16_t coord;
+
 struct Point
 {
-    uint16_t x;
-    uint16_t y;
+    coord x, y;
 
-    Point()
-    {
-    }
+    Point() {}
+    Point(coord x, coord y) : x(x), y(y) {}
+};
 
-    Point(uint16_t x, uint16_t y) : x(x), y(y)
-    {
-    }
+struct Rect
+{
+    coord x, y, w, h;
+
+    Rect() {}
+    Rect(coord x, coord y, coord w, coord h) : x(x), y(y), w(w), h(h) {}
 };
 
 // https://github.com/z3t0/Arduino-IRremote/releases/tag/2.1.0
@@ -42,50 +45,47 @@ decode_results currentIrResult;
 // https://github.com/wayoda/LedControl
 LedControl controller = LedControl(MATRIX_DATA, MATRIX_CLK, MATRIX_CS, MATRIX_COUNT);
 
-int16_t potentiometerValue = 0;
-bool left = false;
-bool right = false;
+bool left, right, notFirstTime = false;
 
-Point player = Point(0, 0);
-Point goal = Point(MAZE_WIDTH - 2, 6);
-bool maze[MAZE_WIDTH][MAZE_HEIGHT];
+Point players[4];
+Point playerGoals[4]; // = Point(FIELD_WIDTH - 2, 6);
+bool maze[FIELD_WIDTH][FIELD_HEIGHT];
 
 uint16_t tick;
+uint64_t lastTiltMillis = 0;
 
-long lastmillis = 0;
-
-bool isPath(uint16_t x, uint16_t y)
+bool isPath(coord x, coord y)
 {
-    if (x < 0 || y < 0 || x >= MAZE_WIDTH || y >= MAZE_HEIGHT)
+    if (x < 0 || y < 0 || x >= FIELD_WIDTH || y >= FIELD_HEIGHT)
         return false;
     return !maze[x][y];
 }
 
-bool isWall(uint16_t x, uint16_t y)
+bool isWall(coord x, coord y, const Rect rect)
 {
-    if (x < 0 || y < 0 || x >= MAZE_WIDTH || y >= MAZE_HEIGHT)
+    if (x < rect.x || y < rect.y || x >= rect.x + rect.w || y >= rect.y + rect.h)
         return false;
     return maze[x][y];
 }
 
-void generateMaze()
+void generateMaze(const Rect rect)
 {
-    Point current = Point(MAZE_WIDTH / 2, MAZE_HEIGHT / 2); // start in the middle
+    Point current = Point(rect.x + rect.w / 2, rect.y + rect.h / 2); // start in the middle
 
     uint16_t returningPointsSize = 0;
-    Point returning[((MAZE_WIDTH - 1) / 2) * ((MAZE_HEIGHT - 1) / 2)];
+    Point returning[((FIELD_WIDTH - 1) / 2) * ((FIELD_HEIGHT - 1) / 2)];
 
-    for (uint16_t x = 0; x < MAZE_WIDTH; x++)
-        for (uint16_t y = 0; y < MAZE_HEIGHT; y++)
-            maze[x][y] = true; // set everything to wall first
+    for (coord xi = rect.x; xi < rect.x + rect.w; xi++)
+        for (coord yi = rect.y; yi < rect.y + rect.h; yi++)
+            maze[xi][yi] = true; // set everything to wall first
 
+    bool directions[4];
     while (true)
     {
-        bool directions[4];
-        directions[0] = isWall(current.x, current.y - 2); // up
-        directions[1] = isWall(current.x + 2, current.y); // right
-        directions[2] = isWall(current.x, current.y + 2); // down
-        directions[3] = isWall(current.x - 2, current.y); // left
+        directions[0] = isWall(current.x, current.y - 2, rect); // up
+        directions[1] = isWall(current.x + 2, current.y, rect); // right
+        directions[2] = isWall(current.x, current.y + 2, rect); // down
+        directions[3] = isWall(current.x - 2, current.y, rect); // left
 
         uint8_t ableDirections = 0;
         for (uint8_t i = 0; i < 4; i++)
@@ -147,13 +147,32 @@ void generateMaze()
     }
 }
 
-void movePlayer(uint8_t dir)
+void moveAllPlayers(uint8_t dir)
 {
-    Serial.print("Moving player in dir ");
+    Serial.print("Moving all players in dir ");
     Serial.println(dir);
 
     tone(BUZZER, 400 + dir * 200, 50);
 
+    for (uint8_t i = 0; i < 4; i++)
+    {
+        Point &p = players[i];
+        const Point &g = playerGoals[i];
+        movePlayer(p, dir);
+
+        if (p.x == g.x && p.y == g.y)
+        {
+            // show i-th number
+        }
+        else
+        {
+            // hide i-th number
+        }
+    }
+}
+
+void movePlayer(Point &player, uint8_t dir)
+{
     switch (dir)
     {
     case UP:
@@ -201,21 +220,20 @@ void movePlayer(uint8_t dir)
         }
         break;
     }
+}
 
-    if (goal.x == player.x && goal.y == player.y)
+void generateMazes()
+{
+    for (uint8_t i = 0; i < MATRIX_COUNT; i++)
     {
-
-        generateMaze();
-        updateDisplay();
-        player.x = 0;
-        player.y = 0;
+        generateMaze(Rect(i * 8, 0, 8, 8));
     }
 }
 
 void setup()
 {
     pinMode(FLAME, INPUT);
-    pinMode(TILT, INPUT);
+    pinMode(TILT, INPUT_PULLUP);
     pinMode(POTENTIOMETER, INPUT);
     pinMode(BUZZER, OUTPUT);
     randomSeed(analogRead(A0) + micros()); // initialize the random state machine
@@ -225,7 +243,17 @@ void setup()
     clearDisplay();
     receiver.enableIRIn();
 
-    generateMaze();
+    players[0] = Point(6, 0);
+    players[1] = Point(8 + 0, 0);
+    players[2] = Point(16 + 6, 6);
+    players[3] = Point(24 + 0, 6);
+
+    playerGoals[0] = Point(0, 6);
+    playerGoals[1] = Point(8 + 6, 6);
+    playerGoals[2] = Point(16 + 0, 0);
+    playerGoals[3] = Point(24 + 6, 0);
+
+    generateMazes();
     printMaze();
     updateDisplay();
 }
@@ -247,7 +275,7 @@ void updateDisplay()
         int device = x / 8;
         int column = x % 8;
 
-        if (x >= MAZE_WIDTH)
+        if (x >= FIELD_WIDTH)
         {
             Serial.println("Warning: updateDisplay() overflowed.");
             break;
@@ -270,9 +298,9 @@ void updateDisplay()
 
 void printMaze()
 {
-    for (int y = 0; y < MAZE_HEIGHT; y++)
+    for (int y = 0; y < FIELD_HEIGHT; y++)
     {
-        for (int x = 0; x < MAZE_WIDTH; x++)
+        for (int x = 0; x < FIELD_WIDTH; x++)
             Serial.print(maze[x][y] ? '%' : ' ');
         Serial.println();
     }
@@ -283,26 +311,28 @@ void setLed(Point point, bool on)
     controller.setLed(point.x / 8, 7 - point.y, 7 - point.x % 8, on);
 }
 
+bool fireState = false;
+
 void loop()
 {
     if (receiver.decode(&currentIrResult))
     {
-        Serial.print("Received ir signal: ");
-        Serial.println(currentIrResult.value);
+        //Serial.print("Received ir signal: ");
+        //Serial.println(currentIrResult.value);
 
         switch (currentIrResult.value)
         {
         case 16718055:
-            movePlayer(UP);
+            moveAllPlayers(UP);
             break;
         case 16734885:
-            movePlayer(RIGHT);
+            moveAllPlayers(RIGHT);
             break;
         case 16730805:
-            movePlayer(DOWN);
+            moveAllPlayers(DOWN);
             break;
         case 16716015:
-            movePlayer(LEFT);
+            moveAllPlayers(LEFT);
             break;
         }
 
@@ -313,57 +343,54 @@ void loop()
     {
         char c = Serial.read();
         if (c == 'w')
-            movePlayer(UP);
+            moveAllPlayers(UP);
         else if (c == 'a')
-            movePlayer(LEFT);
+            moveAllPlayers(LEFT);
         else if (c == 's')
-            movePlayer(DOWN);
+            moveAllPlayers(DOWN);
         else if (c == 'd')
-            movePlayer(RIGHT);
+            moveAllPlayers(RIGHT);
     }
 
     int16_t pot = analogRead(POTENTIOMETER);
-    /*
-    if (abs(potentiometerValue - pot) > 100)
-    {
-        potentiometerValue = pot;
-        tone(BUZZER, potentiometerValue * 2 + 400, 100);
-    }*/
-     Serial.println(pot);
-    if (pot == 0 && right == false)
+    if (pot < 200 && !right)
     {
         right = true;
         left = false;
-        movePlayer(DOWN);
+        if (notFirstTime)
+            moveAllPlayers(DOWN);
+        notFirstTime = true;
     }
-    else if (pot > 450 && left == false)
+    else if (pot > 1024 - 200 && !left)
     {
         right = false;
         left = true;
-        movePlayer(DOWN);
+        if (notFirstTime)
+            moveAllPlayers(DOWN);
+        notFirstTime = true;
     }
 
     int16_t fire = analogRead(FLAME);
-       
-    if (fire > 300)
+    if (fire > 300 && !fireState)
     {
-        movePlayer(RIGHT);
+        fireState = true;
+        moveAllPlayers(RIGHT);
+    }
+    else if (fire < 75 && fireState)
+    {
+        fireState = false;
     }
 
-    bool state = digitalRead(TILT);
-    if (millis() - lastmillis < 100)
+    if (digitalRead(TILT) && millis() - lastTiltMillis > 800)
     {
-        lastmillis = millis();
-        state = HIGH;
-    }
-    if (state == HIGH)
-    {
-        movePlayer(UP);
-        state = LOW;
+        lastTiltMillis = millis();
+        moveAllPlayers(UP);
     }
 
-    setLed(player, tick % 150 < 75);
-    setLed(goal, tick % 150 < 5);
+    for (uint8_t i = 0; i < 4; i++)
+        setLed(players[i], tick % 30 < 15);
+    for (uint8_t i = 0; i < 4; i++)
+        setLed(playerGoals[i], tick % 2);
 
     tick++;
 }
