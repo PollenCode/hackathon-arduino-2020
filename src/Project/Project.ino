@@ -329,7 +329,7 @@ void loop()
         potentiometerValue = pot;
         tone(BUZZER, potentiometerValue * 2 + 400, 100);
     }*/
-
+     Serial.println(pot);
     if (pot == 0 && right == false)
     {
         right = true;
@@ -344,7 +344,8 @@ void loop()
     }
 
     int16_t fire = analogRead(FLAME);
-    if (fire < 300)
+       
+    if (fire > 300)
     {
         movePlayer(RIGHT);
     }
