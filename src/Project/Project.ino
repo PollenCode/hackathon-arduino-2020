@@ -1,5 +1,6 @@
 #include <LedControl.h>
 #include <IRremote.h>
+#include "glyph.h"
 
 /* PINS */
 #define MATRIX_DATA 10
@@ -10,6 +11,9 @@
 #define BUZZER 13
 #define FLAME A3
 #define TILT 7
+#define BUTTON A5
+#define RESET 4
+#define FAN 5
 
 #define MATRIX_COUNT 4
 #define FIELD_WIDTH 32
@@ -20,7 +24,7 @@
 #define DOWN 2
 #define LEFT 3
 
-typedef uint16_t coord;
+typedef uint8_t coord;
 
 struct Point
 {
@@ -47,12 +51,19 @@ LedControl controller = LedControl(MATRIX_DATA, MATRIX_CLK, MATRIX_CS, MATRIX_CO
 
 bool left, right, notFirstTime = false;
 
-Point players[4];
-Point playerGoals[4]; // = Point(FIELD_WIDTH - 2, 6);
+Point players[MATRIX_COUNT];
+Point playerGoals[MATRIX_COUNT]; // = Point(FIELD_WIDTH - 2, 6);
 bool maze[FIELD_WIDTH][FIELD_HEIGHT];
 
-uint16_t tick;
-uint64_t lastTiltMillis = 0;
+uint32_t tick = 0;
+uint32_t lastTiltMillis = 0, lastPressMillis = 0, lastTickMillis = 0, lastWinEffectMillis = 0, lastFanMillis = 0;
+uint8_t setupStep = MATRIX_COUNT;
+uint16_t seed = 0;
+uint16_t code = 0;
+bool triggeredGoals[MATRIX_COUNT];
+bool allGoals = false;
+uint8_t winEffectState = 0;
+bool fireState = false;
 
 bool isPath(coord x, coord y)
 {
@@ -154,19 +165,48 @@ void moveAllPlayers(uint8_t dir)
 
     tone(BUZZER, 400 + dir * 200, 50);
 
-    for (uint8_t i = 0; i < 4; i++)
+    for (uint8_t i = 0; i < MATRIX_COUNT; i++)
     {
+        if (triggeredGoals[i])
+            continue;
+
         Point &p = players[i];
         const Point &g = playerGoals[i];
+
         movePlayer(p, dir);
 
         if (p.x == g.x && p.y == g.y)
         {
-            // show i-th number
+            char c[MATRIX_COUNT];
+            itoa(code, c, 10);
+
+            setChar(i, c[i]);
+            triggeredGoals[i] = true;
+
+            for (uint8_t j = 0; j < 3; j++)
+            {
+                tone(BUZZER, 800 + j * 100, 50);
+                delay(60);
+            }
         }
-        else
+    }
+
+    allGoals = true;
+    for (uint8_t j = 0; j < MATRIX_COUNT; j++)
+    {
+        if (!triggeredGoals[j])
         {
-            // hide i-th number
+            allGoals = false;
+            break;
+        }
+    }
+
+    if (allGoals)
+    {
+        for (uint8_t j = 0; j < 15; j++)
+        {
+            tone(BUZZER, 200 + j * 200, 50);
+            delay(60);
         }
     }
 }
@@ -232,16 +272,24 @@ void generateMazes()
 
 void setup()
 {
-    pinMode(FLAME, INPUT);
-    pinMode(TILT, INPUT_PULLUP);
+    digitalWrite(RESET, HIGH);
     pinMode(POTENTIOMETER, INPUT);
     pinMode(BUZZER, OUTPUT);
-    randomSeed(analogRead(A0) + micros()); // initialize the random state machine
+    pinMode(FLAME, INPUT);
+    pinMode(TILT, INPUT_PULLUP);
+    pinMode(BUTTON, INPUT);
+    pinMode(RESET, OUTPUT);
+    pinMode(FAN, OUTPUT);
+
+    //randomSeed(analogRead(A0) + micros()); // initialize the random state machine
 
     Serial.begin(9600);
 
     clearDisplay();
     receiver.enableIRIn();
+
+    setupStep = MATRIX_COUNT;
+    seed = 0;
 
     players[0] = Point(6, 0);
     players[1] = Point(8 + 0, 0);
@@ -253,9 +301,10 @@ void setup()
     playerGoals[2] = Point(16 + 0, 0);
     playerGoals[3] = Point(24 + 6, 0);
 
-    generateMazes();
-    printMaze();
-    updateDisplay();
+    for (uint8_t i = 0; i < MATRIX_COUNT; i++)
+        triggeredGoals[i] = false;
+
+    setChar(MATRIX_COUNT - setupStep, '_');
 }
 
 void clearDisplay()
@@ -263,7 +312,7 @@ void clearDisplay()
     for (uint16_t i = 0; i < MATRIX_COUNT; i++)
     {
         controller.shutdown(i, false);
-        controller.setIntensity(i, 8);
+        controller.setIntensity(i, 5);
         controller.clearDisplay(i);
     }
 }
@@ -285,18 +334,11 @@ void updateDisplay()
         for (int y = 0; y < 8; y++)
             value |= maze[x][y] << y;
 
-        Serial.print(value, BIN);
-        Serial.print(" at device ");
-        Serial.print(device);
-        Serial.print(", column ");
-        Serial.println(column);
-
-        //controller.setRow(device, column, B10101010);
         controller.setColumn(device, 7 - column, value);
     }
 }
 
-void printMaze()
+/*void printMaze()
 {
     for (int y = 0; y < FIELD_HEIGHT; y++)
     {
@@ -304,6 +346,32 @@ void printMaze()
             Serial.print(maze[x][y] ? '%' : ' ');
         Serial.println();
     }
+}*/
+
+void setChar(uint8_t mat, char c)
+{
+    uint8_t *glyph;
+    if (c >= '0' && c <= '9')
+        glyph = glyphs[c - '0'];
+    else if (c == '_')
+        glyph = glyphs[10];
+    else
+    {
+        Serial.print("Warning: unknown glyph ");
+        Serial.println(c);
+        return;
+    }
+
+    for (uint8_t y = 0; y < 8; y++)
+        setRow(mat, y, glyph[y]);
+    //for (uint8_t x = 0; x < 8; x++)
+    //    for (uint8_t y = 0; y < 8; y++)
+    //        setLed(Point(point.x + x, point.y + y), glyph[y][x]);
+}
+
+void setRow(uint8_t mat, coord row, uint8_t val)
+{
+    controller.setRow(mat, 7 - row, val);
 }
 
 void setLed(Point point, bool on)
@@ -311,32 +379,100 @@ void setLed(Point point, bool on)
     controller.setLed(point.x / 8, 7 - point.y, 7 - point.x % 8, on);
 }
 
-bool fireState = false;
-
 void loop()
 {
+    uint32_t mil = millis();
+
+    if (mil - lastTickMillis > 50)
+    {
+        lastTickMillis = mil;
+        tick++;
+    }
+
     if (receiver.decode(&currentIrResult))
     {
-        //Serial.print("Received ir signal: ");
-        //Serial.println(currentIrResult.value);
+        Serial.print("Received ir signal: ");
+        Serial.println(currentIrResult.value);
 
-        switch (currentIrResult.value)
+        if (setupStep)
         {
-        case 16718055:
-            moveAllPlayers(UP);
-            break;
-        case 16734885:
-            moveAllPlayers(RIGHT);
-            break;
-        case 16730805:
-            moveAllPlayers(DOWN);
-            break;
-        case 16716015:
-            moveAllPlayers(LEFT);
-            break;
+            char c = '\0';
+            switch (currentIrResult.value)
+            {
+            case 16738455:
+                c = '0';
+                break;
+            case 16724175:
+                c = '1';
+                break;
+            case 16718055:
+                c = '2';
+                break;
+            case 16743045:
+                c = '3';
+                break;
+            case 16716015:
+                c = '4';
+                break;
+            case 16726215:
+                c = '5';
+                break;
+            case 16734885:
+                c = '6';
+                break;
+            case 16728765:
+                c = '7';
+                break;
+            case 16730805:
+                c = '8';
+                break;
+            case 16732845:
+                c = '9';
+                break;
+            default:
+                break;
+            }
+
+            if (c)
+            {
+                seed *= 10;
+                seed += c - '0';
+
+                setChar(MATRIX_COUNT - setupStep, c);
+
+                tone(BUZZER, 420, 50);
+
+                if (!--setupStep)
+                {
+                    delay(1000);
+                    randomSeed(seed);
+                    code = random(9000) + 1000;
+
+                    Serial.print("Code is ");
+                    Serial.print(code);
+                    Serial.print(", seed is ");
+                    Serial.println(seed);
+
+                    generateMazes();
+                    updateDisplay();
+                }
+                else
+                {
+                    setChar(MATRIX_COUNT - setupStep, '_');
+                }
+            }
+        }
+        else if (currentIrResult.value == 16753245) // on/off button
+        {
+            digitalWrite(RESET, LOW);
         }
 
         receiver.resume();
+    }
+
+    if (setupStep)
+    {
+        return;
     }
 
     if (Serial.available())
@@ -353,7 +489,8 @@ void loop()
     }
 
     int16_t pot = analogRead(POTENTIOMETER);
-    if (pot < 200 && !right)
+    Serial.println(pot);
+    if (pot < 290 + 100 && !right)
     {
         right = true;
         left = false;
@@ -361,7 +498,7 @@ void loop()
             moveAllPlayers(DOWN);
         notFirstTime = true;
     }
-    else if (pot > 1024 - 200 && !left)
+    else if (pot > 1024 - 100 && !left)
     {
         right = false;
         left = true;
@@ -371,26 +508,52 @@ void loop()
     }
 
     int16_t fire = analogRead(FLAME);
-    if (fire > 300 && !fireState)
+    if (mil - lastFanMillis > 2000)
     {
-        fireState = true;
-        moveAllPlayers(RIGHT);
-    }
-    else if (fire < 75 && fireState)
-    {
-        fireState = false;
+        //Serial.println(fire);
+        if (fire > 80 && !fireState)
+        {
+            lastFanMillis = mil;
+            analogWrite(FAN, 200);
+            fireState = true;
+            moveAllPlayers(RIGHT);
+        }
+        else if (fire < 12 && fireState)
+        {
+            lastFanMillis = mil;
+            analogWrite(FAN, 0);
+            fireState = false;
+        }
     }
 
-    if (digitalRead(TILT) && millis() - lastTiltMillis > 800)
+    if (digitalRead(TILT) && mil - lastTiltMillis > 800)
     {
-        lastTiltMillis = millis();
+        lastTiltMillis = mil;
         moveAllPlayers(UP);
     }
 
-    for (uint8_t i = 0; i < 4; i++)
-        setLed(players[i], tick % 30 < 15);
-    for (uint8_t i = 0; i < 4; i++)
-        setLed(playerGoals[i], tick % 2);
+    if (analogRead(BUTTON) > 950 && mil - lastPressMillis > 500)
+    {
+        lastPressMillis = mil;
+        moveAllPlayers(LEFT);
+    }
 
-    tick++;
+    if (allGoals && mil - lastWinEffectMillis > 500)
+    {
+        lastWinEffectMillis = mil;
+
+        uint8_t b = (++winEffectState & 0x1) ? 0 : 255;
+
+        controller.setColumn(0, 7, b);
+        controller.setColumn(MATRIX_COUNT - 1, 0, b);
+    }
+
+    for (uint8_t i = 0; i < MATRIX_COUNT; i++)
+    {
+        if (!triggeredGoals[i])
+        {
+            setLed(players[i], tick % 6 < 3);
+            setLed(playerGoals[i], tick % 2 == 0);
+        }
+    }
 }
